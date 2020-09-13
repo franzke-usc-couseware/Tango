@@ -11,22 +11,22 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install dependancies
 RUN apt-get update && apt-get install -y \
+	apt-transport-https \
+	build-essential \
+	ca-certificates \
 	curl \
 	dmsetup \
 	git \
-	vim \
-	supervisor \
+	iptables \
+	libgcrypt20-dev \
+	lxc \
 	python3 \
 	python3-pip \
-	build-essential \
+	supervisor \
 	tcl8.6 \
+	vim \
 	wget \
-	libgcrypt20-dev \
 	zlib1g-dev \
-	apt-transport-https \
-	ca-certificates \
-	lxc \
-	iptables \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
