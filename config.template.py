@@ -3,9 +3,11 @@
 #
 
 from builtins import object
-import logging, time
+import logging
+import time
 
 # Config - defines
+import os
 
 
 class Config(object):
@@ -18,7 +20,8 @@ class Config(object):
     # Unique prefix that defines VM name space for this Tango
     # version. When working in development, this prefix should be your
     # unique identifier. The "prod" prefix is reserved for production
-    PREFIX = "local"
+    DEFAULT_PREFIX = "local"
+    PREFIX = os.getenv("DOCKER_DEPLOYMENT", DEFAULT_PREFIX).lower()
 
     # Default port for the RESTful server to listen on.
     PORT = 3000
@@ -31,8 +34,8 @@ class Config(object):
 
     # Courselabs directory. Must be created before starting Tango
     COURSELABS = "courselabs"
-    
-    # Directory within each courselab where Tango will copy the output 
+
+    # Directory within each courselab where Tango will copy the output
     # for jobs of that courselab
     OUTPUT_FOLDER = "output"
 
@@ -45,14 +48,17 @@ class Config(object):
     # Docker is being used as the VMMs.
     # It must be an absolute path with trailing slash, i.e
     # /opt/TangoService/Tango/volumes/
-    DOCKER_VOLUME_PATH = ""
+    DEFAULT_DOCKER_VOLUME_PATH = ""
+    DOCKER_VOLUME_PATH = os.getenv(
+        "DOCKER_VOLUME_PATH", DEFAULT_DOCKER_VOLUME_PATH)
 
     #####
     # Part 2: Constants that shouldn't need to change very often.
     #
 
     # Keys for Tango to authenticate client requests
-    KEYS = ["test"]
+    DEFAULT_KEY = "test"
+    KEYS = [os.getenv("RESTFUL_KEY", DEFAULT_KEY)]
 
     # Queue manager checks for new work every so many seconds
     DISPATCH_PERIOD = 0.2
@@ -83,7 +89,7 @@ class Config(object):
     DOCKER_HOST_USER = ''
 
     # Maximum size for input files in bytes
-    MAX_INPUT_FILE_SIZE = 250 * 1024 * 1024 # 250MB
+    MAX_INPUT_FILE_SIZE = 250 * 1024 * 1024  # 250MB
 
     # Maximum size for output file in bytes
     MAX_OUTPUT_FILE_SIZE = 1000 * 1024
@@ -132,7 +138,9 @@ class Config(object):
     # Part 4: Settings for shared memory
     #
     USE_REDIS = True
-    REDIS_HOSTNAME = "127.0.0.1"
+    DEFAULT_REDIS_HOSTNAME = "127.0.0.1"
+    REDIS_HOSTNAME = os.getenv(
+        "DOCKER_REDIS_HOSTNAME", DEFAULT_REDIS_HOSTNAME).lower()
     REDIS_PORT = 6379
 
     ######

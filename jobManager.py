@@ -1,4 +1,5 @@
 from __future__ import print_function
+
 #
 # JobManager - Thread that assigns jobs to worker threads
 #
@@ -10,20 +11,26 @@ from __future__ import print_function
 # is launched that will handle things from here on. If anything goes
 # wrong, the job is made dead with the error.
 #
-from builtins import object
-from future import standard_library
-standard_library.install_aliases()
+
+import copy
+import time
+import logging
+import threading
+
 from builtins import str
-import threading, logging, time, copy
-
+from builtins import object
 from datetime import datetime
-from tango import *
-from jobQueue import JobQueue
-from preallocator import Preallocator
-from worker import Worker
+from future import standard_library
 
-from tangoObjects import TangoQueue
+import tango  # Written this way to avoid circular imports
 from config import Config
+from tangoObjects import TangoQueue
+from worker import Worker
+from preallocator import Preallocator
+from jobQueue import JobQueue
+
+standard_library.install_aliases()
+
 
 class JobManager(object):
 
@@ -63,70 +70,68 @@ class JobManager(object):
     def __manage(self):
         self.running = True
         while True:
-            id = self.jobQueue.getNextPendingJob()
+            # Blocks until we get a next job
+            job = self.jobQueue.getNextPendingJob()
 
-            if id:
-                job = self.jobQueue.get(id)
+            if not job.accessKey and Config.REUSE_VMS:
+                vm = None
+                while vm is None:
+                    vm = self.jobQueue.reuseVM(job)
+                    # Sleep for a bit and then check again
+                    time.sleep(Config.DISPATCH_PERIOD)
 
-                # job could no longer exist if it was completed by someone else
-                if job == None:
-                    continue
-
-                if not job.accessKey and Config.REUSE_VMS:
-                    id, vm = self.jobQueue.getNextPendingJobReuse(id)
-                    job = self.jobQueue.get(id)
-                    if job == None:
-                        continue
-
-                try:
-                    # Mark the job assigned
-                    self.jobQueue.assignJob(job.id)
-                    # if the job has specified an account
-                    # create an VM on the account and run on that instance
-                    if job.accessKeyId:
-                        from vmms.ec2SSH import Ec2SSH
-                        vmms = Ec2SSH(job.accessKeyId, job.accessKey)
-                        newVM = copy.deepcopy(job.vm)
-                        newVM.id = self._getNextID()
-                        preVM = vmms.initializeVM(newVM)
+            try:
+                # Mark the job assigned
+                job.makeAssigned()
+                # if the job has specified an account
+                # create an VM on the account and run on that instance
+                if job.accessKeyId:
+                    from vmms.ec2SSH import Ec2SSH
+                    vmms = Ec2SSH(job.accessKeyId, job.accessKey)
+                    newVM = copy.deepcopy(job.vm)
+                    newVM.id = self._getNextID()
+                    preVM = vmms.initializeVM(newVM)
+                else:
+                    # Try to find a vm on the free list and allocate it to
+                    # the worker if successful.
+                    if Config.REUSE_VMS:
+                        preVM = vm
                     else:
-                        # Try to find a vm on the free list and allocate it to
-                        # the worker if successful.
-                        if Config.REUSE_VMS:
-                            preVM = vm
-                        else:
-                            preVM = self.preallocator.allocVM(job.vm.name)
-                        vmms = self.vmms[job.vm.vmms]  # Create new vmms object
+                        preVM = self.preallocator.allocVM(job.vm.name)
+                    vmms = self.vmms[job.vm.vmms]  # Create new vmms object
 
-                    # Now dispatch the job to a worker
+                if preVM.name is not None:
                     self.log.info("Dispatched job %s:%d to %s [try %d]" %
                                   (job.name, job.id, preVM.name, job.retries))
-                    job.appendTrace(
-                        "%s|Dispatched job %s:%d [try %d]" %
-                        (datetime.utcnow().ctime(), job.name, job.id, job.retries))
+                else:
+                    self.log.info(
+                        "Unable to pre-allocate a vm for job job %s:%d [try %d]" %
+                        (job.name, job.id, job.retries))
 
-                    Worker(
-                        job,
-                        vmms,
-                        self.jobQueue,
-                        self.preallocator,
-                        preVM
-                    ).start()
+                job.appendTrace(
+                    "%s|Dispatched job %s:%d [try %d]" %
+                    (datetime.utcnow().ctime(), job.name, job.id, job.retries))
 
-                except Exception as err:
-                    self.jobQueue.makeDead(job.id, str(err))
+                Worker(
+                    job,
+                    vmms,
+                    self.jobQueue,
+                    self.preallocator,
+                    preVM
+                ).start()
 
-            # Sleep for a bit and then check again
-            time.sleep(Config.DISPATCH_PERIOD)
+            except Exception as err:
+                self.jobQueue.makeDead(job.id, str(err))
 
 
 if __name__ == "__main__":
 
     if not Config.USE_REDIS:
-        print("You need to have Redis running to be able to initiate stand-alone\
+        print(
+            "You need to have Redis running to be able to initiate stand-alone\
          JobManager")
     else:
-        tango = TangoServer()
+        tango = tango.TangoServer()
         tango.log.debug("Resetting Tango VMs")
         tango.resetTango(tango.preallocator.vmms)
         for key in tango.preallocator.machines.keys():

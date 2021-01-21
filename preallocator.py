@@ -3,7 +3,10 @@
 #
 from builtins import object
 from builtins import range
-import threading, logging, time, copy
+import threading
+import logging
+import time
+import copy
 
 from tangoObjects import TangoDictionary, TangoQueue, TangoIntValue
 from config import Config
@@ -31,7 +34,7 @@ class Preallocator(object):
     def poolSize(self, vmName):
         """ poolSize - returns the size of the vmName pool, for external callers
         """
-        if vmName not in self.machines.keys():
+        if vmName not in self.machines:
             return 0
         else:
             return len(self.machines.get(vmName)[0])
@@ -41,12 +44,12 @@ class Preallocator(object):
         to be preallocated.
 
         This function is called via the TangoServer HTTP interface.
-        It will validate the request,update the machine list, and 
-        then spawn child threads to do the creation and destruction 
+        It will validate the request,update the machine list, and
+        then spawn child threads to do the creation and destruction
         of machines as necessary.
         """
         self.lock.acquire()
-        if vm.name not in self.machines.keys():
+        if vm.name not in self.machines:
             self.machines.set(vm.name, [[], TangoQueue(vm.name)])
             self.log.debug("Creating empty pool of %s instances" % (vm.name))
         self.lock.release()
@@ -72,7 +75,7 @@ class Preallocator(object):
         """ allocVM - Allocate a VM from the free list
         """
         vm = None
-        if vmName in self.machines.keys():
+        if vmName in self.machines:
             self.lock.acquire()
 
         if not self.machines.get(vmName)[1].empty():
@@ -203,7 +206,7 @@ class Preallocator(object):
         this function when the system is queiscent (pool size == free
         size)
         """
-        if vmName not in self.machines.keys():
+        if vmName not in self.machines:
             return -1
 
         dieVM = None
@@ -236,7 +239,7 @@ class Preallocator(object):
         """ getPool - returns the members of a pool and its free list
         """
         result = {}
-        if vmName not in self.machines.keys():
+        if vmName not in self.machines:
             return result
 
         result["total"] = []

@@ -2,15 +2,15 @@
 #
 # Implements objects used to pass state within Tango.
 #
+from config import Config
+from queue import Queue
+import pickle
+import redis
+from builtins import str
 from builtins import range
 from builtins import object
 from future import standard_library
 standard_library.install_aliases()
-from builtins import str
-import redis
-import pickle
-import queue
-from config import Config
 
 redisConnection = None
 
@@ -36,8 +36,8 @@ class InputFile(object):
         self.destFile = destFile
 
     def __repr__(self):
-        return "InputFile(localFile: %s, destFile: %s)" % (self.localFile, 
-                self.destFile)
+        return "InputFile(localFile: %s, destFile: %s)" % (self.localFile,
+                                                           self.destFile)
 
 
 class TangoMachine(object):
@@ -203,7 +203,19 @@ def TangoQueue(object_name):
     if Config.USE_REDIS:
         return TangoRemoteQueue(object_name)
     else:
-        return queue.Queue()
+        return ExtendedQueue()
+
+
+class ExtendedQueue(Queue):
+    """ Python Thread safe Queue with the remove and clean function added """
+
+    def remove(self, value):
+        with self.mutex:
+            self.queue.remove(value)
+
+    def _clean(self):
+        with self.mutex:
+            self.queue.clear()
 
 
 class TangoRemoteQueue(object):
@@ -238,8 +250,11 @@ class TangoRemoteQueue(object):
         else:
             item = self.__db.lpop(self.key)
 
-        # if item:
-        #     item = item[1]
+        if item is None:
+            return None
+
+        if block and item:
+            item = item[1]
 
         item = pickle.loads(item)
         return item
@@ -257,10 +272,19 @@ class TangoRemoteQueue(object):
         self.__db = getRedisConnection()
         self.__dict__.update(dict)
 
+    def remove(self, item):
+        items = self.__db.lrange(self.key, 0, -1)
+        pickled_item = pickle.dumps(item)
+        return self.__db.lrem(self.key, 0, pickled_item)
+
+    def _clean(self):
+        self.__db.delete(self.key)
 
 # This is an abstract class that decides on
 # if we should initiate a TangoRemoteDictionary or TangoNativeDictionary
 # Since there are no abstract classes in Python, we use a simple method
+
+
 def TangoDictionary(object_name):
     if Config.USE_REDIS:
         return TangoRemoteDictionary(object_name)
@@ -274,6 +298,9 @@ class TangoRemoteDictionary(object):
         self.r = getRedisConnection()
         self.hash_name = object_name
 
+    def __contains__(self, id):
+        return self.r.hexists(self.hash_name, str(id))
+
     def set(self, id, obj):
         pickled_obj = pickle.dumps(obj)
 
@@ -284,7 +311,7 @@ class TangoRemoteDictionary(object):
         return str(id)
 
     def get(self, id):
-        if self.r.hexists(self.hash_name, str(id)):
+        if id in self:
             unpickled_obj = self.r.hget(self.hash_name, str(id))
             obj = pickle.loads(unpickled_obj)
             return obj
@@ -292,7 +319,7 @@ class TangoRemoteDictionary(object):
             return None
 
     def keys(self):
-        keys = map(lambda key : key.decode(), self.r.hkeys(self.hash_name))
+        keys = map(lambda key: key.decode(), self.r.hkeys(self.hash_name))
         return list(keys)
 
     def values(self):
@@ -311,19 +338,23 @@ class TangoRemoteDictionary(object):
         self.r.delete(self.hash_name)
 
     def items(self):
-        return iter([(i, self.get(i)) for i in range(1,Config.MAX_JOBID+1)
-                if self.get(i) != None])
+        return iter([(i, self.get(i)) for i in range(1, Config.MAX_JOBID + 1)
+                     if self.get(i) is not None])
+
 
 class TangoNativeDictionary(object):
 
     def __init__(self):
         self.dict = {}
 
+    def __contains__(self, id):
+        return str(id) in self.dict
+
     def set(self, id, obj):
         self.dict[str(id)] = obj
 
     def get(self, id):
-        if str(id) in self.dict:
+        if id in self:
             return self.dict[str(id)]
         else:
             return None
@@ -339,8 +370,8 @@ class TangoNativeDictionary(object):
             del self.dict[str(id)]
 
     def items(self):
-        return iter([(i, self.get(i)) for i in range(1,Config.MAX_JOBID+1)
-                if self.get(i) != None])
+        return iter([(i, self.get(i)) for i in range(1, Config.MAX_JOBID + 1)
+                     if self.get(i) is not None])
 
     def _clean(self):
         # only for testing
