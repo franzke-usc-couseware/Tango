@@ -1,5 +1,3 @@
-from __future__ import print_function
-
 #
 # JobManager - Thread that assigns jobs to worker threads
 #
@@ -17,10 +15,7 @@ import time
 import logging
 import threading
 
-from builtins import str
-from builtins import object
 from datetime import datetime
-from future import standard_library
 
 import tango  # Written this way to avoid circular imports
 from config import Config
@@ -29,11 +24,8 @@ from worker import Worker
 from preallocator import Preallocator
 from jobQueue import JobQueue
 
-standard_library.install_aliases()
-
 
 class JobManager(object):
-
     def __init__(self, queue):
         self.daemon = True
         self.jobQueue = queue
@@ -57,7 +49,7 @@ class JobManager(object):
         self.__manage()
 
     def _getNextID(self):
-        """ _getNextID - returns next ID to be used for a job-associated
+        """_getNextID - returns next ID to be used for a job-associated
         VM.  Job-associated VM's have 5-digit ID numbers between 10000
         and 99999.
         """
@@ -87,6 +79,7 @@ class JobManager(object):
                 # create an VM on the account and run on that instance
                 if job.accessKeyId:
                     from vmms.ec2SSH import Ec2SSH
+
                     vmms = Ec2SSH(job.accessKeyId, job.accessKey)
                     newVM = copy.deepcopy(job.vm)
                     newVM.id = self._getNextID()
@@ -101,24 +94,22 @@ class JobManager(object):
                     vmms = self.vmms[job.vm.vmms]  # Create new vmms object
 
                 if preVM.name is not None:
-                    self.log.info("Dispatched job %s:%d to %s [try %d]" %
-                                  (job.name, job.id, preVM.name, job.retries))
+                    self.log.info(
+                        "Dispatched job %s:%d to %s [try %d]"
+                        % (job.name, job.id, preVM.name, job.retries)
+                    )
                 else:
                     self.log.info(
-                        "Unable to pre-allocate a vm for job job %s:%d [try %d]" %
-                        (job.name, job.id, job.retries))
+                        "Unable to pre-allocate a vm for job job %s:%d [try %d]"
+                        % (job.name, job.id, job.retries)
+                    )
 
                 job.appendTrace(
-                    "%s|Dispatched job %s:%d [try %d]" %
-                    (datetime.utcnow().ctime(), job.name, job.id, job.retries))
+                    "%s|Dispatched job %s:%d [try %d]"
+                    % (datetime.utcnow().ctime(), job.name, job.id, job.retries)
+                )
 
-                Worker(
-                    job,
-                    vmms,
-                    self.jobQueue,
-                    self.preallocator,
-                    preVM
-                ).start()
+                Worker(job, vmms, self.jobQueue, self.preallocator, preVM).start()
 
             except Exception as err:
                 self.jobQueue.makeDead(job.id, str(err))
@@ -129,7 +120,8 @@ if __name__ == "__main__":
     if not Config.USE_REDIS:
         print(
             "You need to have Redis running to be able to initiate stand-alone\
-         JobManager")
+         JobManager"
+        )
     else:
         tango = tango.TangoServer()
         tango.log.debug("Resetting Tango VMs")
