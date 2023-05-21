@@ -1,4 +1,7 @@
-FROM debian:buster
+# Start with empty ubuntu machine
+FROM ubuntu:20.04
+
+MAINTAINER Autolab Development Team "autolab-dev@andrew.cmu.edu"
 
 # Setup correct environment variable
 ENV HOME /root
@@ -24,10 +27,10 @@ RUN apt-get update && apt-get install -y \
 	lxc \
 	python3 \
 	python3-pip \
-	supervisor \
+	build-essential \
 	tcl8.6 \
-	vim \
 	wget \
+	libgcrypt20-dev \
 	zlib1g-dev \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
