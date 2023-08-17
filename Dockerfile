@@ -66,7 +66,9 @@ RUN mkdir -p volumes
 RUN mkdir -p /var/log/docker /var/log/supervisor
 
 # Move custom config file to proper location
-RUN cp /opt/TangoService/Tango/deployment/config/supervisord.conf /etc/supervisor/supervisord.conf
+RUN \
+  mkdir -p /etc/supervisor && \
+  cp /opt/TangoService/Tango/deployment/config/supervisord.conf /etc/supervisor/supervisord.conf
 
 EXPOSE 3000
 
