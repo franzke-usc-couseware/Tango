@@ -10,6 +10,7 @@ import inspect
 import hashlib
 import json
 import logging
+import docker
 
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
@@ -33,6 +34,7 @@ class Status(object):
         self.obtained_pool = self.create(0, "Found pool")
         self.obtained_all_pools = self.create(0, "Found all pools")
         self.partial_output_obtained = self.create(0, "Partial output obtained")
+        self.image_built = self.create(0, "Docker image built")
 
         self.wrong_key = self.create(-1, "Key not recognized")
         self.wrong_courselab = self.create(-1, "Courselab not found")
@@ -41,6 +43,7 @@ class Status(object):
         self.invalid_prealloc_size = self.create(-1, "Invalid prealloc size")
         self.pool_not_found = self.create(-1, "Pool not found")
         self.prealloc_failed = self.create(-1, "Preallocate VM failed")
+        self.image_build_failed = self.create(-1, "Image build failed")
 
     def create(self, id, msg):
         """create - Constructs a dict with the given ID and message"""
@@ -108,16 +111,19 @@ class TangoREST(object):
                 except IOError:
                     continue
 
-    def createTangoMachine(
-        self, image, vmms=Config.VMMS_NAME, vmObj={"cores": 1, "memory": 512}
-    ):
+    def createTangoMachine(self, image, vmms=Config.VMMS_NAME, vmObj=None):
         """createTangoMachine - Creates a tango machine object from image"""
+        cores = getattr(Config, "DOCKER_CORES_LIMIT", None)
+        memory = getattr(Config, "DOCKER_MEMORY_LIMIT", None)
+        if vmObj and "cores" in vmObj and "memory" in vmObj:
+            cores = vmObj["cores"]
+            memory = vmObj["memory"]
         return TangoMachine(
             name=image,
             vmms=vmms,
             image="%s" % (image),
-            cores=vmObj["cores"],
-            memory=vmObj["memory"],
+            cores=cores,
+            memory=memory,
             disk=None,
             network=None,
         )
@@ -413,7 +419,7 @@ class TangoREST(object):
             self.log.info("Key not recognized: %s" % key)
             return self.status.wrong_key
 
-    def prealloc(self, key, image, num, vmStr):
+    async def prealloc(self, key, image, num, vmStr):
         """prealloc - Create a pool of num instances spawned from image"""
         self.log.debug("Received prealloc request(%s, %s, %s)" % (key, image, num))
         if self.validateKey(key):
@@ -438,4 +444,29 @@ class TangoREST(object):
             return self.status.preallocated
         else:
             self.log.info("Key not recognized: %s" % key)
+            return self.status.wrong_key
+
+    def build(self, key, tempfile):
+        self.log.debug("Received build request(%s)" % (key))
+        if self.validateKey(key):
+            if Config.VMMS_NAME != "localDocker":
+                self.log.error("Not using Docker backend, so cannot build image")
+                os.unlink(tempfile)
+                return self.status.image_build_failed
+            try:
+                client = docker.from_env()
+                imageTarStr = open(tempfile, "rb").read()
+                images = client.images.load(imageTarStr)
+                id_list = ", ".join(image.short_id for image in images)
+            except Exception as e:
+                self.log.error("Image build failed: " + str(e))
+                os.unlink(tempfile)
+                return self.status.image_build_failed
+
+            self.log.info("Successfully loaded images: %s" % (id_list))
+            os.unlink(tempfile)
+            return self.status.image_built
+        else:
+            self.log.info("Key not recognized: %s" % key)
+            os.unlink(tempfile)
             return self.status.wrong_key
