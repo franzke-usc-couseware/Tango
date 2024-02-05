@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y \
 	lxc \
 	python3 \
 	python3-pip \
-	build-essential \
+	supervisor \
 	tcl8.6 \
 	wget \
 	libgcrypt20-dev \
